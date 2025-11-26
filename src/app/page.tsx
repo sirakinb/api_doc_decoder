@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Link,
   Loader2,
@@ -14,11 +14,13 @@ import {
   ChevronRight,
   FileText,
   Globe,
+  Settings,
 } from "lucide-react";
 import { CodeBlock } from "@/components/CodeBlock";
 import { UseCaseCard } from "@/components/UseCaseCard";
 import { EndpointCard } from "@/components/EndpointCard";
 import { ChatInterface } from "@/components/ChatInterface";
+import { ApiKeyModal } from "@/components/ApiKeyModal";
 
 interface Analysis {
   apiName: string;
@@ -66,10 +68,27 @@ export default function Home() {
   const [docsContent, setDocsContent] = useState("");
   const [activeTab, setActiveTab] = useState<"overview" | "usecases" | "endpoints" | "chat">("overview");
   const [error, setError] = useState("");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeys, setApiKeys] = useState({ openaiKey: "", firecrawlKey: "" });
+  const [hasKeys, setHasKeys] = useState(false);
+
+  // Load API keys from localStorage on mount
+  useEffect(() => {
+    const openaiKey = localStorage.getItem("openai_api_key") || "";
+    const firecrawlKey = localStorage.getItem("firecrawl_api_key") || "";
+    setApiKeys({ openaiKey, firecrawlKey });
+    setHasKeys(!!openaiKey);
+  }, []);
 
   const handleAnalyze = async () => {
     const hasInput = inputMode === "url" ? url.trim() : docsText.trim();
     if (!hasInput) return;
+
+    // Check for API key
+    if (!apiKeys.openaiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
 
     setIsLoading(true);
     setError("");
@@ -82,7 +101,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           inputMode === "url" 
-            ? { url } 
+            ? { url, firecrawlKey: apiKeys.firecrawlKey } 
             : { text: docsText }
         ),
       });
@@ -107,14 +126,16 @@ export default function Home() {
           docsContent: crawlData.content,
           userContext,
           apiName,
+          openaiKey: apiKeys.openaiKey,
         }),
       });
 
+      const analyzeData = await analyzeResponse.json();
+
       if (!analyzeResponse.ok) {
-        throw new Error("Failed to analyze documentation");
+        throw new Error(analyzeData.error || "Failed to analyze documentation");
       }
 
-      const analyzeData = await analyzeResponse.json();
       setAnalysis(analyzeData.analysis);
     } catch (err: any) {
       console.error("Error:", err);
@@ -126,6 +147,29 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
+      {/* API Key Modal */}
+      <ApiKeyModal
+        isOpen={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
+        onSave={(keys) => {
+          setApiKeys(keys);
+          setHasKeys(!!keys.openaiKey);
+        }}
+      />
+
+      {/* Settings Button - Fixed */}
+      <button
+        onClick={() => setShowApiKeyModal(true)}
+        className={`fixed top-4 right-4 z-40 p-3 rounded-xl border transition-all ${
+          hasKeys 
+            ? "bg-card border-border hover:border-primary text-muted hover:text-foreground" 
+            : "bg-primary/10 border-primary text-primary animate-pulse"
+        }`}
+        title={hasKeys ? "API Settings" : "Add your API keys to get started"}
+      >
+        <Settings size={20} />
+      </button>
+
       {/* Background gradient */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
@@ -427,7 +471,7 @@ export default function Home() {
                     <p className="text-muted">Get answers about anything in the documentation</p>
                   </div>
                   <div className="max-w-3xl mx-auto">
-                    <ChatInterface docsContent={docsContent} apiName={analysis.apiName} />
+                    <ChatInterface docsContent={docsContent} apiName={analysis.apiName} openaiKey={apiKeys.openaiKey} />
                   </div>
                 </div>
               )}
@@ -494,9 +538,9 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          </div>
+        </div>
         </section>
       )}
-    </main>
+      </main>
   );
 }

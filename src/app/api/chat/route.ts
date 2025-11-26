@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request: NextRequest) {
   try {
-    const { message, docsContent, conversationHistory, apiName } = await request.json();
+    const { message, docsContent, conversationHistory, apiName, openaiKey } = await request.json();
+
+    // Use provided key or fall back to environment variable
+    const apiKey = openaiKey || process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "OpenAI API key is required. Please add your API key in settings." },
+        { status: 401 }
+      );
+    }
 
     if (!message || !docsContent) {
       return NextResponse.json(
@@ -15,6 +21,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const openai = new OpenAI({ apiKey });
 
     const systemPrompt = `You are an expert API assistant helping developers understand and use the ${apiName || "provided"} API. You have access to the complete API documentation and can provide:
 
@@ -70,6 +78,15 @@ Rules:
     return NextResponse.json({ response: content });
   } catch (error: any) {
     console.error("Chat error:", error);
+    
+    // Handle specific OpenAI errors
+    if (error.status === 401 || error.code === "invalid_api_key") {
+      return NextResponse.json(
+        { error: "Invalid OpenAI API key. Please check your key in settings." },
+        { status: 401 }
+      );
+    }
+    
     return NextResponse.json(
       { error: "Failed to process chat message", message: error.message },
       { status: 500 }

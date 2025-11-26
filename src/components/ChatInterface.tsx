@@ -13,9 +13,10 @@ interface Message {
 interface ChatInterfaceProps {
   docsContent: string;
   apiName: string;
+  openaiKey?: string;
 }
 
-export function ChatInterface({ docsContent, apiName }: ChatInterfaceProps) {
+export function ChatInterface({ docsContent, apiName, openaiKey }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -47,23 +48,27 @@ export function ChatInterface({ docsContent, apiName }: ChatInterfaceProps) {
           docsContent,
           apiName,
           conversationHistory: messages,
+          openaiKey: openaiKey || localStorage.getItem("openai_api_key") || "",
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to get response");
-
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get response");
+      }
+
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.response },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
+          content: error.message || "Sorry, I encountered an error. Please try again.",
         },
       ]);
     } finally {
@@ -223,4 +228,3 @@ export function ChatInterface({ docsContent, apiName }: ChatInterfaceProps) {
     </div>
   );
 }
-

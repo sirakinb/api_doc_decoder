@@ -3,7 +3,7 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 
 export async function POST(request: NextRequest) {
   try {
-    const { url, text } = await request.json();
+    const { url, text, firecrawlKey } = await request.json();
 
     // If text is provided directly, use it
     if (text && text.trim()) {
@@ -17,12 +17,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if Firecrawl API key is configured
-    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
+    // Use provided key or fall back to environment variable
+    const apiKey = firecrawlKey || process.env.FIRECRAWL_API_KEY;
     
-    if (firecrawlApiKey) {
+    if (apiKey) {
       try {
-        const firecrawl = new FirecrawlApp({ apiKey: firecrawlApiKey });
+        const firecrawl = new FirecrawlApp({ apiKey });
         
         const scrapeResult = await firecrawl.scrape(url, {
           formats: ["markdown"],
@@ -43,10 +43,20 @@ export async function POST(request: NextRequest) {
         }
       } catch (firecrawlError: any) {
         console.error("Firecrawl error:", firecrawlError);
-        // Check if it's a credits issue
+        // Check if it's a credits issue or invalid key
         if (firecrawlError.message?.includes("credits") || firecrawlError.status === 402) {
-          // Continue to fallback
+          return NextResponse.json(
+            { error: "Firecrawl API has insufficient credits. Please add credits or use 'Paste Text' mode." },
+            { status: 402 }
+          );
         }
+        if (firecrawlError.status === 401) {
+          return NextResponse.json(
+            { error: "Invalid Firecrawl API key. Please check your key in settings." },
+            { status: 401 }
+          );
+        }
+        // Continue to fallback for other errors
       }
     }
 
@@ -81,10 +91,12 @@ export async function POST(request: NextRequest) {
     }
 
     // If all else fails
+    const errorMessage = apiKey 
+      ? "Unable to fetch documentation. The site may require JavaScript or block scrapers. Please use 'Paste Text' mode instead."
+      : "No Firecrawl API key provided. Please add your key in settings, or use 'Paste Text' mode.";
+    
     return NextResponse.json(
-      { 
-        error: `Unable to fetch documentation from this URL. Please use "Paste Text" mode instead - copy the documentation content from the website and paste it directly.`,
-      },
+      { error: errorMessage },
       { status: 400 }
     );
   } catch (error: any) {
